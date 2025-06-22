@@ -1,230 +1,153 @@
-from station_keeping import StationKeepingController
 import math
-from Variables import *
 import numpy as np
+from Variables import *
+from control_algorithms import (
+    ControlAlgorithm,
+    WaypointFollowingAlgorithm,
+    StationKeepingAlgorithm,
+    DirectControlAlgorithm,
+    VMGOptimizationAlgorithm
+)
+from navigation_utils import normalize_angle, angle_of_attack
 
-def printA(x):
-    """
-    This takes an angle and turns it into a + or - angle, so it is between -180 and +180
-    """
-    x %= 360
-    if x > 180:
-        x = -180 + x-180
-    return x
-
-def aoa(x):
-    """
-    Angle of Attack, takes the angle of the boat and turns it into the angle of the foil???
-    """
-    x = printA(x)
-    # if x < 0:
-    #     return -44/90*x
-    return (44/90)*x
-    # return -0.5*x+44#4/9
+# Navigation utility functions moved to navigation_utils.py
+printA = normalize_angle  # Alias for backward compatibility
+aoa = angle_of_attack    # Alias for backward compatibility
 
 class Controler():
-
+    """Main controller that manages different control algorithms"""
+    
     def __init__(self, Boat, polars="test.pol"):
         self.boat = Boat
         self.polars = self.readPolar(polars)
-        self.waypoints = []  # original waypoints from course
-        self.active_course = []  # current active leg pairs being followed
-        self.wind_change_points = []  # track points added due to wind changes
-        self.current_target_idx = 0  # index of next target in original waypoints
-        self.initial_wind_angle = self.boat.wind.angle.calc()
-        self.control_mode = "normal"
-        self.courseType = None  # store course type
-        self.station_keeper = None  # initialize station keeper as None
+        self.active_course = []
+        self.current_algorithm = None
+        self.display = None
         
-    
-    def recalculate_path(self):
-        """
-        Recalculate path including the next waypoint we were heading towards
-        """
-        current_wind = self.boat.wind.angle.calc()
-        wind_diff = abs(printA(current_wind - self.initial_wind_angle))
-        
-        if wind_diff > 5 and self.control_mode != "station_keeping":
-            # get current position
-            current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
-            
-            # find which waypoint we were heading to
-            target_idx = 0
-            min_dist = float('inf')
-            current_course_idx = 0
-            
-            # first find where we are in the current course
-            for i, point in enumerate(self.course):
-                dist = math.sqrt((point[0] - current_pos[0])**2 + (point[1] - current_pos[1])**2)
-                if dist < min_dist:
-                    min_dist = dist
-                    current_course_idx = i
-            
-            # then find the next waypoint we were heading to
-            for i, waypoint in enumerate(self.waypoints):
-                # check if this waypoint appears in the course after our current position
-                for point in self.course[current_course_idx:]:
-                    if abs(point[0] - waypoint[0]) < 1e-6 and abs(point[1] - waypoint[1]) < 1e-6:
-                        target_idx = i
-                        break
-                if target_idx == i:  # if we found our target, stop searching
-                    break
-            
-            # create new course starting from current position
-            new_course = [current_pos]
-            
-            # calculate path to the next waypoint
-            next_leg = self.leg(current_pos, self.waypoints[target_idx])
-            new_course.extend(next_leg)
-            
-            # then continue with remaining waypoints
-            for i in range(target_idx + 1, len(self.waypoints)):
-                next_leg = self.leg(new_course[-1], self.waypoints[i])
-                new_course.extend(next_leg)
-            
-            # replace entire course with new calculation
-            self.course = new_course
-            self.initial_wind_angle = current_wind
-            return True
-                
-        return False
 
     def plan(self, plantype, waypoints):
-        """Initial course planning"""
-        self.waypoints = waypoints  # store original waypoints
-        self.current_target_idx = 0
-        self.wind_change_points = []
-        self.courseType = plantype  # store course type for reference
-        
-        if plantype == "e":  # endurance
-            self.control_mode = "normal"
-            self.station_keeper = None
-            # calculate first two legs only
-            self.calculate_next_legs()
+        """Initialize control algorithm based on plan type"""
+        if plantype == "e" or plantype == "p":  # endurance or precision
+            self.current_algorithm = WaypointFollowingAlgorithm(self.boat, self, waypoints, plantype)
+            self.current_algorithm.calculate_next_legs()
             return self.active_course
             
         elif plantype == "s":  # station keeping
-            self.control_mode = "station_keeping"
-            # initialize station keeper
-            self.station_keeper = StationKeepingController(
-                self.boat, 
-                waypoints, 
-                self,
-                self.display.clear_paths if hasattr(self, 'display') else None
-            )
-            # get current position and calculate path to upwind point
-            current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
-            self.active_course = [current_pos] + self.leg(current_pos, self.station_keeper.upwind_target)
+            self.current_algorithm = StationKeepingAlgorithm(self.boat, self, waypoints)
             return self.active_course
             
-        elif plantype == "p":  # precision
-            self.control_mode = "normal"
-            self.station_keeper = None
-            # calculate first two legs only
-            self.calculate_next_legs()
-            return self.active_course
+        else:
+            raise ValueError(f"Unknown plan type: {plantype}")
         
-    def calculate_next_legs(self):
-        """Calculate next two legs of the course"""
-        current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
-        
-        # clear active course but keep wind change points
-        self.active_course = self.wind_change_points.copy()
-        
-        # add current position if we don't have any points yet
-        if not self.active_course:
-            self.active_course.append(current_pos)
-            
-        # calculate path to next target
-        if self.current_target_idx < len(self.waypoints):
-            next_target = self.waypoints[self.current_target_idx % len(self.waypoints)]
-            next_leg = self.leg(self.active_course[-1], next_target)
-            self.active_course.extend(next_leg)
-            
-            # calculate one more leg if we need to loop back to start for endurance
-            if self.courseType == "e" and self.current_target_idx == len(self.waypoints) - 1:
-                next_leg = self.leg(self.active_course[-1], self.waypoints[0])
-            elif self.current_target_idx + 1 < len(self.waypoints):
-                next_leg = self.leg(self.active_course[-1], self.waypoints[(self.current_target_idx + 1) % len(self.waypoints)])
-            else:
-                next_leg = []
-            
-            self.active_course.extend(next_leg)
-
-        # update visualization if display exists
-        if hasattr(self, 'display'):
-            self.display.clear_paths()
-            self.display.boat.plotCourse(self.active_course, 'green')
+    def set_algorithm(self, algorithm):
+        """Set a custom control algorithm"""
+        if not isinstance(algorithm, ControlAlgorithm):
+            raise TypeError("Algorithm must be a ControlAlgorithm instance")
+        self.current_algorithm = algorithm
 
     def leg(self, start, stop):
-        """ 
-        The purpose of leg is when given a start point and stop point it checks if the straight line
-        involves going upwind or downwind. If it is upwind or downwind it creates an intermediate point
-        based on the boats polars to allow for tacking or jibbing. 
-        Between two buoys it only does a single tack.
-        Waypoints are buoys.
-        """
-        angle = Angle(1,math.atan2(stop[1]-start[1],stop[0]-start[0])*180/math.pi)
-        apparentAngle = abs(printA(Angle.norm(self.boat.wind.angle+Angle(1,180)-angle).calc()))
-        # apparent angle is the wind angle relative to the boat between -180 and +180 
-        # get the last element of self.polars
-        if apparentAngle < self.polars[-1][0]: # upwind
-            # We want to get to stop only using the upwind BVMG
-            """
-            we want to get to stop only using the upwind BVMG
-            variables:
-            - v: vector representing the direction and distance from start to stop
-                - Angle(...) calculates the angle in degrees
-                - math.sqrt(...) calculates the Euclidean distance
-            - k and j: vectors representing optimal tacking directions relative to the wind
-            - D, Dk, Dj: determinants that solve the linear system, finding how much of k and j vectors are needed to account for the winds effect while reaching the destination
-            - a, b: scaling factors for vectors k and j respectively, determining how much the boat should follow each vector (tacking directions)
-
-            returns the number of steps along the k vector to reach the intermediate point
-            """
-            v = Vector(Angle(1,round(math.atan2(stop[1]- start[1],stop[0]- start[0])*180/math.pi*10000)/10000),math.sqrt((stop[0]- start[0])**2+(stop[1]- start[1])**2))
-            k = Vector(self.boat.wind.angle+Angle(1,180+self.polars[-1][0]),1) # to the right of the no sail zone
-            j = Vector(self.boat.wind.angle+Angle(1,180-self.polars[-1][0]),1) # to the left of the no sail zone
-            D = np.linalg.det(np.array([[k.xcomp(),j.xcomp()],[k.ycomp(),j.ycomp()]]))
-            Dk = np.linalg.det(np.array([[v.xcomp(),j.xcomp()],[v.ycomp(),j.ycomp()]]))
-            Dj = np.linalg.det(np.array([[k.xcomp(),v.xcomp()],[k.ycomp(),v.ycomp()]]))
-            a = Dk/D # number of k vectors; aka how far to sail along k
-            b = Dj/D # number of j vectors; aka how far to sail along j
-            k.norm *= a
-            j.norm *= b
-            # calculates the ideal tacking point
-            # calculates the ideal intermediate point between start and end if you are going upwind
-            ans = [[start[0]+k.xcomp(),start[1]+k.ycomp()],stop] # returns steps on k vector
-            return  ans
-        elif apparentAngle > self.polars[-1][1]: #downwind
-            """
-            variables:
-            - v: vector representing the direction and distance from start to stop
-                - Angle(...) calculates the angle in degrees
-                - math.sqrt(...) calculates the Euclidean distance
-            - k and j: vectors representing two optimal gybing directions based on the wind
-            - D, Dk, Dj: determinants that solve the linear system, finding how much of k and j vectors are needed to account for the winds effect while reaching the destination
-            - a, b: scaling factors for vectors k and j respectively, determining how much the boat should follow each vector (gybing directions)
-
-            returns the number of steps along the k vector to reach the intermediate point
-            """
-            v = Vector(Angle(1,round(math.atan2(stop[1]- start[1],stop[0]- start[0])*180/math.pi*10000)/10000),math.sqrt((stop[0]- start[0])**2+(stop[1]- start[1])**2))
-            k = Vector(self.boat.wind.angle+Angle(1,180+self.polars[-1][1]),1)
-            j = Vector(self.boat.wind.angle+Angle(1,180-self.polars[-1][1]),1)
-            D = np.linalg.det(np.array([[k.xcomp(),j.xcomp()],[k.ycomp(),j.ycomp()]]))
-            Dk = np.linalg.det(np.array([[v.xcomp(),j.xcomp()],[v.ycomp(),j.ycomp()]]))
-            Dj = np.linalg.det(np.array([[k.xcomp(),v.xcomp()],[k.ycomp(),v.ycomp()]]))
-            a = Dk/D # number of k vectors
-            b = Dj/D # number of j vectors
-            k.norm *= a
-            j.norm *= b
-            # calculates the ideal jibbing point
-            # calculates the ideal intermediate point between start and end if you are going downwind
-            ans = [[start[0]+k.xcomp(),start[1]+k.ycomp()],stop]
-            return  ans
-
-        # if the straightline doesnt go upwind or downwind it returns the end buoy
+        """Calculate path between two points, handling no-go zones"""
+        # Calculate direct course
+        dx = stop[0] - start[0]
+        dy = stop[1] - start[1]
+        course_angle = Angle(1, math.atan2(dy, dx) * 180/math.pi)
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        # Get wind angles
+        global_wind = self.boat.wind.angle.calc()
+        boat_heading = self.boat.angle.calc()
+        relative_wind = normalize_angle(global_wind - boat_heading)
+        
+        # Calculate course relative to wind
+        relative_course = normalize_angle(course_angle.calc() - boat_heading)
+        angle_to_wind = abs(normalize_angle(relative_course - relative_wind))
+        if angle_to_wind > 180:
+            angle_to_wind = 360 - angle_to_wind
+        
+        # Get no-go zones from polars
+        upwind_nogo = self.polars[-1][0]
+        downwind_nogo = 180 - self.polars[-1][1]
+        
+        # Check if we need to tack (upwind)
+        if angle_to_wind < upwind_nogo:
+            return self._calculate_tacking_path(start, stop, relative_wind, 
+                                              boat_heading, upwind_nogo, 
+                                              course_angle, distance)
+        
+        # Check if we need to jibe (downwind)
+        elif (180 - angle_to_wind) < downwind_nogo:
+            return self._calculate_jibing_path(start, stop, relative_wind,
+                                             boat_heading, downwind_nogo,
+                                             course_angle, distance)
+        
+        # Direct course is possible
         return [stop]
+    
+    def _calculate_tacking_path(self, start, stop, relative_wind, boat_heading, 
+                               upwind_nogo, course_angle, distance):
+        """Calculate tacking path to avoid upwind no-go zone"""
+        # Calculate tack angles in boat reference frame
+        tack_angle1 = relative_wind + upwind_nogo
+        tack_angle2 = relative_wind - upwind_nogo
+        
+        # Convert to global coordinates
+        global_tack1 = (tack_angle1 + boat_heading) % 360
+        global_tack2 = (tack_angle2 + boat_heading) % 360
+        
+        # Create vectors for both tack directions
+        k = Vector(Angle(1, global_tack1), 1)
+        j = Vector(Angle(1, global_tack2), 1)
+        v = Vector(course_angle, distance)
+        
+        # Calculate intersection point using linear algebra
+        D = np.linalg.det(np.array([[k.xcomp(), j.xcomp()], 
+                                    [k.ycomp(), j.ycomp()]]))
+        Dk = np.linalg.det(np.array([[v.xcomp(), j.xcomp()], 
+                                     [v.ycomp(), j.ycomp()]]))
+        Dj = np.linalg.det(np.array([[k.xcomp(), v.xcomp()], 
+                                     [k.ycomp(), v.ycomp()]]))
+        
+        a = Dk/D
+        b = Dj/D
+        k.norm *= a
+        j.norm *= b
+        
+        # Return path with intermediate tacking point
+        intermediate = [start[0] + k.xcomp(), start[1] + k.ycomp()]
+        return [intermediate, stop]
+    
+    def _calculate_jibing_path(self, start, stop, relative_wind, boat_heading,
+                              downwind_nogo, course_angle, distance):
+        """Calculate jibing path to avoid downwind no-go zone"""
+        # Calculate jibe angles in boat reference frame
+        jibe_angle1 = relative_wind + 180 + downwind_nogo
+        jibe_angle2 = relative_wind + 180 - downwind_nogo
+        
+        # Convert to global coordinates
+        global_jibe1 = (jibe_angle1 + boat_heading) % 360
+        global_jibe2 = (jibe_angle2 + boat_heading) % 360
+        
+        # Create vectors for both jibe directions
+        k = Vector(Angle(1, global_jibe1), 1)
+        j = Vector(Angle(1, global_jibe2), 1)
+        v = Vector(course_angle, distance)
+        
+        # Calculate intersection point using linear algebra
+        D = np.linalg.det(np.array([[k.xcomp(), j.xcomp()], 
+                                    [k.ycomp(), j.ycomp()]]))
+        Dk = np.linalg.det(np.array([[v.xcomp(), j.xcomp()], 
+                                     [v.ycomp(), j.ycomp()]]))
+        Dj = np.linalg.det(np.array([[k.xcomp(), v.xcomp()], 
+                                     [k.ycomp(), v.ycomp()]]))
+        
+        a = Dk/D
+        b = Dj/D
+        k.norm *= a
+        j.norm *= b
+        
+        # Return path with intermediate jibing point
+        intermediate = [start[0] + k.xcomp(), start[1] + k.ycomp()]
+        return [intermediate, stop]
     
     # NOTE: I've desided using best course to next mark while probably the optimal solution brings in a level of complexity that we do not
     # have the time to handle, thus we'll be simplifying.
@@ -241,25 +164,6 @@ class Controler():
     #     axis  = printA(angle.calc())
     #     return [ma,ma-(ma - axis)*2]
 
-    def handle_wind_change(self):
-        """Handle significant wind changes by recalculating path from current position"""
-        current_wind = self.boat.wind.angle.calc()
-        wind_diff = abs(printA(current_wind - self.initial_wind_angle))
-        
-        if wind_diff > 5 and self.control_mode != "station_keeping":
-            current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
-            
-            # add current position to wind change points
-            self.wind_change_points.append(current_pos)
-            
-            # recalculate next legs from current position
-            self.calculate_next_legs()
-            
-            # update stored wind angle
-            self.initial_wind_angle = current_wind
-            
-            return True
-        return False
 
     def VB(self,angle, wind): # reading boat polars
         angle =abs(angle.calc())
@@ -287,167 +191,144 @@ class Controler():
         return rtn
 
     def update(self, dt, rNoise=2, stability=1):
-        """Main update loop"""
-        if self.control_mode == "station_keeping" and self.station_keeper is not None:
-            # give full control to station keeper
-            self.station_keeper.update(dt)
+        """Main update loop delegating to current algorithm"""
+        if self.current_algorithm:
+            self.current_algorithm.update(dt)
         else:
-            # normal course following logic
-            if self.target_reached():
-                self.wind_change_points = []
-                
-                if self.courseType == "e" and self.current_target_idx >= len(self.waypoints) - 1:
-                    self.current_target_idx = 0
-                    print("Completed lap, continuing endurance course")
-                else:
-                    self.current_target_idx += 1
-                
-                self.calculate_next_legs()
-                
-            elif self.handle_wind_change():
-                pass
-            
+            # Default behavior when no algorithm is set
             self.updateRudder(rNoise, stability)
             self.updateSails()
 
-    def isEnp(self,a1,a2): # Enp means something like "Enroulement de Point" (French for "gybe point")
-        """
-        Checks if the wind direction lies between two angles to check if gybing is necessary
-        Returns True if gybing is necessary, and False if it is not
-        """
-        a1 = Angle.norm(a1).calc()
-        a2 = Angle.norm(a2).calc()
-        wind = Angle.norm(self.boat.wind.angle).calc()
-        if (a1 < wind and wind < a2) or (a2 < wind and wind < a1):
-            return True
-        return False
+    def _check_if_jibing_needed(self, angle1, angle2):
+        """Check if path crosses downwind line requiring a jibe"""
+        a1 = Angle.norm(angle1).calc()
+        a2 = Angle.norm(angle2).calc()
+        
+        # Get relative wind
+        global_wind = self.boat.wind.angle.calc()
+        boat_heading = self.boat.angle.calc()
+        relative_wind = normalize_angle(global_wind - boat_heading)
+        
+        # Downwind is 180° from wind
+        downwind_direction = normalize_angle(relative_wind + 180)
+        
+        # Check if we cross the downwind line
+        return self._angles_bracket(a1, a2, downwind_direction)
 
-    def isVir(self,a1,a2): # Vir means something like "Virer" (French for "to tack")
-        """
-        Checks if the wind direction (reversed by 180 deg) lies between two angles to check if tacking is necessary
-        Returns True if tacking is necessary, and False if it is not
-        """
-        a1 = Angle.norm(a1).calc()
-        a2 = Angle.norm(a2).calc()
-        wind = Angle.norm(self.boat.wind.angle+Angle(1,180)).calc()
-        if (a1 < wind and wind < a2) or (a2 < wind and wind < a1):
-            return True
-        return False
+    def _check_if_tacking_needed(self, angle1, angle2):
+        """Check if path crosses upwind line requiring a tack"""
+        a1 = Angle.norm(angle1).calc()
+        a2 = Angle.norm(angle2).calc()
+        
+        # Get relative wind
+        global_wind = self.boat.wind.angle.calc()
+        boat_heading = self.boat.angle.calc()
+        relative_wind = normalize_angle(global_wind - boat_heading)
+        
+        # Check if we cross the upwind line
+        return self._angles_bracket(a1, a2, relative_wind)
+    
+    def _angles_bracket(self, a1, a2, target):
+        """Check if target angle is between a1 and a2"""
+        # Handle angle wraparound
+        if a1 <= a2:
+            return a1 <= target <= a2
+        else:
+            return target >= a1 or target <= a2
 
-    def nextP(self):
-        """Determines when the boat has reached the next point on its course"""
-        # Ensure active_course has at least two points
+    def check_waypoint_arrival(self):
+        """Check if boat has reached next waypoint and handle transitions"""
         if not self.active_course or len(self.active_course) < 2:
             current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
             self.active_course = [current_pos, current_pos]
             return 0
 
-        r = 5  # meters radius
+        arrival_radius = 5  # meters
         
-        dy = (self.boat.position.ycomp() - self.active_course[0][1])
-        dx = (self.boat.position.xcomp() - self.active_course[0][0])
+        # Calculate distance to next waypoint
+        dx = self.boat.position.xcomp() - self.active_course[0][0]
+        dy = self.boat.position.ycomp() - self.active_course[0][1]
         dist = degree2meter(math.sqrt(dx**2 + dy**2))
         
-        if dist < r:
-            a1 = Angle(1, round(math.atan2(dy, dx)*180/math.pi*10000)/10000)
-            a2 = Angle(1, round(math.atan2(self.active_course[1][1] - self.active_course[0][1],
-                                        self.active_course[1][0] - self.active_course[0][0])*180/math.pi*10000)/10000)
+        if dist < arrival_radius:
+            # Calculate approach and departure angles
+            approach_angle = Angle(1, math.atan2(dy, dx) * 180/math.pi)
+            
+            if len(self.active_course) > 1:
+                next_dx = self.active_course[1][0] - self.active_course[0][0]
+                next_dy = self.active_course[1][1] - self.active_course[0][1]
+                departure_angle = Angle(1, math.atan2(next_dy, next_dx) * 180/math.pi)
+            else:
+                departure_angle = approach_angle
+            
+            # Remove reached waypoint
             self.active_course.pop(0)
             
-            if len(self.active_course) == 1:  # Ensure we always have 2 points
+            # Ensure we always have at least 2 points
+            if len(self.active_course) == 1:
                 self.active_course.append(self.active_course[0])
-                
-            if self.isEnp(a1, a2):  # gybe necessary
-                return 1
-            if self.isVir(a1, a2):  # tacking necessary
-                return 2
-        return 0
-
-    def target_reached(self):
-        """Check if current target waypoint has been reached"""
-        if self.current_target_idx >= len(self.waypoints) and self.courseType != "e":
-            return False
             
-        current_target = self.waypoints[self.current_target_idx % len(self.waypoints)]
-        current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
+            # Check if maneuver is needed
+            if self._check_if_jibing_needed(approach_angle, departure_angle):
+                return 1  # Jibe needed
+            if self._check_if_tacking_needed(approach_angle, departure_angle):
+                return 2  # Tack needed
         
-        # Check if we're within 5 meters of target
-        dx = current_target[0] - current_pos[0]
-        dy = current_target[1] - current_pos[1]
-        dist = degree2meter(math.sqrt(dx**2 + dy**2))
-        
-        if dist < 5:  # 5 meter radius for reaching target
-            print(f"Reached target {self.current_target_idx % len(self.waypoints)}")
-            return True
-        return False
+        return 0  # No special maneuver needed
 
-    def updateRudder(self, rNoise, stability):
-        """Updates the rudder's angle in order to adjust the boat's heading"""
-        # Ensure active_course has at least two points
+    def get_algorithm_info(self):
+        """Get information about current control algorithm"""
+        if self.current_algorithm:
+            return self.current_algorithm.get_state_info()
+        return {"algorithm": "None", "state": "No algorithm set"}
+
+    def updateRudder(self, noise_factor=2, stability=1):
+        """Update rudder angle to steer toward next waypoint"""
+        # Ensure we have a valid course
         if not self.active_course or len(self.active_course) < 2:
             current_pos = [self.boat.position.xcomp(), self.boat.position.ycomp()]
             self.active_course = [current_pos, current_pos]
-            
-        self.nextP()  # gybe/tack check
-
-        if self.active_course[0][0] == -1:
-            # mise à la cape sous GV
-            pass
-        else:
-            dx = self.active_course[0][0] - self.boat.position.xcomp()
-            dy = self.active_course[0][1] - self.boat.position.ycomp()
-            target_angle = Angle(1, math.atan2(dy, dx) * 180 / math.pi)
-            current_angle = self.boat.linearVelocity.angle
-            dtheta = (target_angle - current_angle).calc()
-
-            rotV = self.boat.rotationalVelocity * 180/math.pi * 0.03 
-
-            dtheta = printA(dtheta)
-            coeff = 2/math.pi * math.atan((dtheta)/40 - rotV/stability)
-            self.boat.hulls[-1].angle = Angle(1, -10*coeff) * rNoise
+        
+        # Check for waypoint arrival
+        self.check_waypoint_arrival()
+        
+        # Calculate steering angle to next waypoint
+        dx = self.active_course[0][0] - self.boat.position.xcomp()
+        dy = self.active_course[0][1] - self.boat.position.ycomp()
+        target_angle = Angle(1, math.atan2(dy, dx) * 180 / math.pi)
+        
+        self._apply_rudder_control(target_angle, noise_factor, stability)
     
-    def updateRudderAngle(self,rNoise,stability,angle):
-        """
-        Updates the rudder's angle based on a given target angle rather then calculating it from the boat's position and course
-        """
-        target_angle = angle
+    def updateRudderAngle(self, noise_factor, stability, target_angle):
+        """Update rudder to steer toward a specific angle"""
+        self._apply_rudder_control(target_angle, noise_factor, stability)
+    
+    def _apply_rudder_control(self, target_angle, noise_factor, stability):
+        """Apply rudder control law to reach target angle"""
+        # Calculate heading error
         current_angle = self.boat.linearVelocity.angle
-        dtheta = (target_angle - current_angle).calc() # difference in current angle and target angle
-
-        rotV = self.boat.rotationalVelocity*180/math.pi *0.03 # rotational velocity * (180/pi) converts from radians to degrees. *0.03 is for time step conversion.
-
-        # coeff = 1-(1/(dtheta.calc()*(1/rotV)+1))
-        dtheta = printA(dtheta)
-
-        """
-        step by step logic for coeff
-        1. (dtheta)/40 -> Normalized heading error; prevents large heading errors from causing excessively large control inputs
-        2. rotV/stability -> Normalized rotational velocity
-        3. (Normalized heading error - Normalized rotation velocity) -> combines desired change and current rotational velocity to create a single value for the control law
-        4. arctan(control law value) -> smoothly bounded output val
-        5. (output val) * (2/pi) -> normalizes range from +/-(pi/2) to a more convient control range +/-1
-        """
-        coeff = 2/math.pi * math.atan((dtheta)/40 - rotV/stability) # determines how aggressively the rudder should be adjusted to steer the boat towards the target angle
-
-        self.boat.hulls[-1].angle = Angle(1,-10*coeff)*rNoise  # * -10 converts the coefficent into a rudder angle adjustment within the effective range for the rudder's physical constraints
+        heading_error = normalize_angle((target_angle - current_angle).calc())
+        
+        # Get rotational velocity in degrees/timestep
+        rot_velocity = self.boat.rotationalVelocity * 180/math.pi * 0.03
+        
+        # Control law: combines heading error with damping
+        # - heading_error/40: Normalized error (40° scaling factor)
+        # - rot_velocity/stability: Damping term
+        # - atan: Smooth saturation function
+        # - 2/π: Normalize output to [-1, 1]
+        control_signal = 2/math.pi * math.atan(heading_error/40 - rot_velocity/stability)
+        
+        # Apply to rudder with physical constraints (-10° to +10°)
+        self.boat.hulls[-1].angle = Angle(1, -10 * control_signal * noise_factor)
     
     def updateSails(self):
-        """
-        Updates the angle of the boat's sails based on the apparent wind direction
-            * The active code simplifies the calculation by directly adjusting wind angle
-            * The commented out code tries to perform a more percise calculation:
-                * Should be theoretically more optimal but not necessary
-        """
-        #angle = Angle.norm(self.boat.angle + Angle(1,90)-self.boat.globalAparentWind().angle+Angle(1,180)).calc()
-        wind = self.boat.globalAparentWind().angle
-        wind += Angle(1,180)
-        wind = wind - self.boat.angle
-
-
-        # # angle = Angle(1,math.acos((wind * Vector(self.boat.angle,1))/wind.norm)*180/math.pi)
-        # # if Angle.norm(wind.angle+Angle(1,180)).calc() > angle.calc():
-        # #     angle = Angle(1,180) -angle
-        # # angle = angle.calc()
-        # self.boat.sails[0].setSailRotation(Angle(1,aoa(angle)))
-
-        self.boat.sails[0].setSailRotation(Angle(1,aoa(wind.calc()))) # adjusts the sails to point at the near optimal angle
+        """Update sail angle based on apparent wind"""
+        # Get apparent wind angle relative to boat
+        apparent_wind = self.boat.globalAparentWind().angle
+        apparent_wind += Angle(1, 180)  # Convert to angle wind is coming FROM
+        relative_wind = apparent_wind - self.boat.angle
+        
+        # Set sail angle using angle of attack function
+        optimal_angle = angle_of_attack(relative_wind.calc())
+        self.boat.sails[0].setSailRotation(Angle(1, optimal_angle))

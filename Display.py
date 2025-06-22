@@ -15,6 +15,12 @@ from Compressor import *
 from station_keeping import StationKeepingController
 #Other
 import os
+
+# Import simulator configuration
+try:
+    from simulator_config import CONTROL_ALGORITHM
+except ImportError:
+    CONTROL_ALGORITHM = None
 import math
 import copy
 import re
@@ -483,22 +489,33 @@ class display:
             # Set up the display reference in the controller
             self.boat.autopilot.display = self
             
-            # Initialize the course with existing waypoints
-            initial_course = self.boat.autopilot.plan(self.boat.courseType, self.boat.waypoints)
-            
-            if self.boat.courseType == "s":  # Station keeping
-                print("Initializing station keeping...")
-                self.boat.autopilot.control_mode = "station_keeping"
-                if not hasattr(self.boat.autopilot, 'station_keeper'):
-                    self.boat.autopilot.station_keeper = StationKeepingController(
-                        self.boat.boat,  # Pass the actual boat instance
-                        self.boat.waypoints,
-                        self.boat.autopilot,
-                        self.clear_paths
-                    )
+            # Check if custom algorithm is configured
+            if CONTROL_ALGORITHM is not None:
+                # Use the configured algorithm
+                if isinstance(CONTROL_ALGORITHM, type):
+                    # It's a class, instantiate it
+                    algorithm = CONTROL_ALGORITHM(self.boat.boat, self.boat.autopilot)
+                    self.boat.autopilot.set_algorithm(algorithm)
+                    print(f"Using custom algorithm: {algorithm.get_state_info()['algorithm']}")
+                else:
+                    print(f"Invalid CONTROL_ALGORITHM in simulator_config.py")
             else:
-                self.clear_paths()
-                self.boat.plotCourse(initial_course, 'green')
+                # Use default behavior based on course type
+                initial_course = self.boat.autopilot.plan(self.boat.courseType, self.boat.waypoints)
+                
+                if self.boat.courseType == "s":  # Station keeping
+                    print("Initializing station keeping...")
+                    self.boat.autopilot.control_mode = "station_keeping"
+                    if not hasattr(self.boat.autopilot, 'station_keeper'):
+                        self.boat.autopilot.station_keeper = StationKeepingController(
+                            self.boat.boat,  # Pass the actual boat instance
+                            self.boat.waypoints,
+                            self.boat.autopilot,
+                            self.clear_paths
+                        )
+                else:
+                    self.clear_paths()
+                    self.boat.plotCourse(initial_course, 'green')
                 
             self.autoButton.label.set_text('Auto Pilot: ON')
         else:
