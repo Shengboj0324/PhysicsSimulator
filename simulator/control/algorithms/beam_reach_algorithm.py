@@ -2,8 +2,8 @@
 Beam Reach Algorithm - Maintains a beam reach (90° to wind)
 """
 
-from control_algorithms import ControlAlgorithm
-from Variables import Angle
+from ...utils.control_algorithms import ControlAlgorithm
+from ...core.Variables import Angle
 
 
 class BeamReachAlgorithm(ControlAlgorithm):

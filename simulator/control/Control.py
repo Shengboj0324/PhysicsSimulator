@@ -1,14 +1,14 @@
 import math
 import numpy as np
-from Variables import *
-from control_algorithms import (
+from ..core.Variables import *
+from ..utils.control_algorithms import (
     ControlAlgorithm,
     WaypointFollowingAlgorithm,
     StationKeepingAlgorithm,
     DirectControlAlgorithm,
     VMGOptimizationAlgorithm
 )
-from navigation_utils import normalize_angle, angle_of_attack
+from ..utils.navigation_utils import normalize_angle, angle_of_attack
 
 # Navigation utility functions moved to navigation_utils.py
 printA = normalize_angle  # Alias for backward compatibility
@@ -17,7 +17,7 @@ aoa = angle_of_attack    # Alias for backward compatibility
 class Controler():
     """Main controller that manages different control algorithms"""
     
-    def __init__(self, Boat, polars="test.pol"):
+    def __init__(self, Boat, polars="data/test.pol"):
         self.boat = Boat
         self.polars = self.readPolar(polars)
         self.active_course = []

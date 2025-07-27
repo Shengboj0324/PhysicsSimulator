@@ -2,8 +2,8 @@
 Example: Zigzag Algorithm - Shows how easy it is to create a new algorithm
 """
 
-from control_algorithms import ControlAlgorithm
-from Variables import Angle
+from ...utils.control_algorithms import ControlAlgorithm
+from ...core.Variables import Angle
 import math
 
 

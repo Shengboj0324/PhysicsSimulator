@@ -1,0 +1,104 @@
+# Boat Configuration File
+# This file defines the boat setup for the Physics Sailing Simulator
+
+# Simulation location
+location: "Shoreline lake, Mountain View, Santa Clara County, California, United States"
+
+# Wind configuration
+wind:
+  direction: 270  # degrees (270 = from West)
+  speed: 5.3      # m/s
+
+# Initial boat position and heading
+initial_state:
+  latitude: 37.431749
+  longitude: -122.09064
+  heading: -93  # degrees
+
+# Hull configuration
+hulls:
+  # Main hull (vaka)
+  - name: "vaka"
+    datasheet: "data/xf-naca001034-il-1000000-Ex.csv"
+    material_density: 997.77  # kg/m³ (water)
+    wetted_area: 0.521       # m²
+    rotational_inertia: 2.69
+    size: 1.8                # meters
+    position:
+      angle: 0
+      distance: 0
+
+  # Port ama (outrigger)
+  - name: "port_ama"
+    datasheet: "data/naca0009-R0.69e6-F180.csv"
+    material_density: 997.77
+    wetted_area: 0.1768
+    rotational_inertia: 3.939
+    size: 1.5
+    position:
+      angle: 90
+      distance: 0.6
+
+  # Starboard ama (outrigger)  
+  - name: "starboard_ama"
+    datasheet: "data/naca0009-R0.69e6-F180.csv"
+    material_density: 997.77
+    wetted_area: 0.1768
+    rotational_inertia: 3.939
+    size: 1.5
+    position:
+      angle: -90
+      distance: 0.6
+
+  # Rudder
+  - name: "rudder"
+    datasheet: "data/naca0015-R7e7-F180.csv"
+    material_density: 997.77
+    wetted_area: 0.0588
+    rotational_inertia: 0.01
+    size: 0.3
+    position:
+      angle: 180
+      distance: 0.9  # half of vaka size
+
+# Sail configuration
+sails:
+  - name: "main_sail"
+    datasheet: "data/MarchajSail.cvs"
+    material_density: 1.204  # kg/m³ (air)
+    wetted_area: 2.03       # m²
+    rotational_inertia: 0
+    size: 0.7
+    position:
+      angle: 90
+      distance: 0.4
+    initial_angle: 75
+    
+    # Winch configuration
+    winches:
+      # Port winch
+      - position:
+          angle: 180
+          distance: 0.6
+        offset_angle: 270
+        offset_distance: 0.45
+        length: 30
+        radius: 0.025
+      
+      # Starboard winch
+      - position:
+          angle: 0
+          distance: 0.6
+        offset_angle: 270
+        offset_distance: 0.45
+        length: 30
+        radius: 0.025
+
+# Boat properties
+boat:
+  mass: 15  # kg
+
+# Polar diagram generation
+polars:
+  recalculate: false  # Set to true to regenerate polar diagrams
+  filename: "MarPol"

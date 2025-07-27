@@ -8,8 +8,8 @@ Steps:
 4. Update simulator_config.py to use your algorithm
 """
 
-from control_algorithms import ControlAlgorithm
-from Variables import Angle
+from ...utils.control_algorithms import ControlAlgorithm
+from ...core.Variables import Angle
 import math
 
 

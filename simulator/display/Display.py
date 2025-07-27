@@ -5,14 +5,14 @@ import matplotlib.transforms as transforms
 import matplotlib.patches as patches
 from mpl_toolkits.axes_grid1.inset_locator import InsetPosition
 from matplotlib.widgets import Slider, Button
-from Map import regionPolygon, loadGrib
+from .Map import regionPolygon, loadGrib
 #Boat and variables
-from Foil import foil, Winch
-from Variables import *
-from Boat import Boat
-from Control import Controler, printA
-from Compressor import *
-from station_keeping import StationKeepingController
+from ..core.Foil import foil, Winch
+from ..core.Variables import *
+from ..core.Boat import Boat
+from ..control.Control import Controler, printA
+# from ..utils.Compressor import *  # Module not found, commented out
+from ..utils.station_keeping import StationKeepingController
 #Other
 import os
 

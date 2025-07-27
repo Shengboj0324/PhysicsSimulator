@@ -1,5 +1,5 @@
 import math
-from Variables import *
+from .Variables import *
 import copy
 
 class Boat:

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import math
-from Variables import *
-from station_keeping import StationKeepingController
+from ..core.Variables import *
+from .station_keeping import StationKeepingController
 
 
 class ControlAlgorithm(ABC):

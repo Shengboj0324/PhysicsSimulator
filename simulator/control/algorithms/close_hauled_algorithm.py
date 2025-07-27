@@ -2,8 +2,8 @@
 Close Hauled Algorithm - Sails as close to the wind as possible
 """
 
-from control_algorithms import ControlAlgorithm
-from Variables import Angle
+from ...utils.control_algorithms import ControlAlgorithm
+from ...core.Variables import Angle
 import math
 
 

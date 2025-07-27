@@ -23,3 +23,5 @@ __pycache__/
 # Data files (if you have any large data files you don't want to track)
 *.grib
 *.grib2
+
+.claude

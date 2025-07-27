@@ -1,4 +1,4 @@
-from Variables import *
+from .Variables import *
 def printA(x):
     x %= 360
     if x > 180:
@@ -36,7 +36,11 @@ class foil: # sail, foil, rudder
         poly = []
         for line in sheet:
             if line[0].isnumeric():
-                poly.append([float(i) for i in line.split()])
+                # Handle both comma-separated and space-separated values
+                if ',' in line:
+                    poly.append([float(i) for i in line.split(',')])
+                else:
+                    poly.append([float(i) for i in line.split()])
                 poly[-1][0] = -poly[-1][0]+0.5
         return poly
 

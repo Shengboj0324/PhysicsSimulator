@@ -4,7 +4,7 @@ Contains common navigation functions and helpers
 """
 
 import math
-from Variables import Angle, Vector
+from ..core.Variables import Angle, Vector
 
 
 def normalize_angle(angle):
