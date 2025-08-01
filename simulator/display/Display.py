@@ -329,6 +329,14 @@ class display:
         self.forceShow = True
         self.time = 0
         self.course_lines = []  # Track active course lines
+        
+        # Wind variability settings
+        self.windVar = False  # Wind variability toggle
+        self.baseWindSpeed = boat.wind.norm  # Store base wind speed
+        self.baseWindDir = boat.wind.angle.calc()  # Store base wind direction
+        self.windGustTime = 0  # Timer for gust cycles
+        self.windDirShift = 0  # Current direction shift
+        self.windSpeedFactor = 1.0  # Current speed multiplier
 
         self.boat = boatDisplayShell(boat, self.axes['A'], boat.position.ycomp())
         self.map(location)
@@ -402,6 +410,9 @@ class display:
             # Update wind angle
             self.boat.boat.wind.angle = Angle(1, self.wRot.val + 180)
             
+            # Update base wind direction for variability
+            self.baseWindDir = (self.wRot.val + 180) % 360
+            
             # Only recalculate if in autopilot mode
             if self.auto and hasattr(self.boat, 'autopilot') and self.boat.autopilot:
                 # Try to handle wind change with new control system
@@ -468,6 +479,19 @@ class display:
             valinit=1,
         )
         self.spRot.on_changed(self.spUpdate)
+        
+        # Wind variance strength slider
+        wvax = plt.axes([0, 0, 1, 1])
+        wvforcesInp = InsetPosition(self.axes['D'], [0.45, 0.30, 0.9, 0.1])
+        wvax.set_axes_locator(wvforcesInp)
+        self.windVarStrength = Slider(
+            ax=wvax,
+            label="Wind Var:",
+            valmin=0,
+            valmax=100,
+            valinit=50,
+        )
+        self.windVarStrength.set_active(False)  # Initially disabled
 
     def pauseT(self,t):
         self.pause = not self.pause
@@ -528,6 +552,25 @@ class display:
             self.forceButton.label.set_text('Hide Forces')
         else:
             self.forceButton.label.set_text('Show Forces')
+    
+    def windVariability(self, t):
+        """Toggle wind variability on/off."""
+        self.windVar = not self.windVar
+        if self.windVar:
+            self.windVarButton.label.set_text('Wind Var: ON')
+            # Enable variance strength slider
+            self.windVarStrength.set_active(True)
+            # Reset wind to base values when turning on
+            self.windGustTime = 0
+            self.windDirShift = 0
+            self.windSpeedFactor = 1.0
+        else:
+            self.windVarButton.label.set_text('Wind Var: OFF')
+            # Disable variance strength slider
+            self.windVarStrength.set_active(False)
+            # Reset wind to base values when turning off
+            self.boat.boat.wind.angle = Angle(1, self.baseWindDir)
+            self.boat.boat.wind.norm = self.baseWindSpeed
             
     def displaySettings(self):
         F_button_ax = plt.axes([0, 0, 1, 1])
@@ -553,6 +596,13 @@ class display:
         A_button_ax.set_axes_locator(autoInp)
         self.autoButton = Button(A_button_ax, 'Auto Pilot: OFF')
         self.autoButton.on_clicked(self.autoF)
+        
+        # Wind variability toggle button
+        W_button_ax = plt.axes([0, 0, 1, 1])
+        windInp = InsetPosition(self.axes['B'], [0, 0.42, 0.9, 0.1])
+        W_button_ax.set_axes_locator(windInp)
+        self.windVarButton = Button(W_button_ax, 'Wind Var: OFF')
+        self.windVarButton.on_clicked(self.windVariability)
 
     def displayValues(self):
         #Velocity
@@ -602,8 +652,63 @@ class display:
         self.axes['A'].axis([min(x), max(x),min(y), max(y)])
         self.axes['A'].grid()
     
+    def updateWindVariability(self, dt):
+        """Update wind with realistic gusting and gradual direction changes."""
+        import math
+        
+        # Increment gust cycle timer
+        self.windGustTime += dt
+        
+        # Get strength from slider (0-100%)
+        strength = self.windVarStrength.val / 100.0
+        
+        # Gust cycle parameters scaled by strength
+        gust_period = 8.0  # Average time between gusts (seconds)
+        gust_duration = 3.0  # How long a gust lasts
+        max_gust_factor = 1.0 + 0.4 * strength  # Maximum gust strength (0-40% increase)
+        min_lull_factor = 1.0 - 0.3 * strength  # Minimum lull strength (0-30% decrease)
+        
+        # Direction shift parameters scaled by strength
+        max_dir_shift = 15.0 * strength  # Maximum direction shift in degrees (0-15°)
+        dir_change_rate = 0.5 * strength  # Degrees per second max rate of change
+        
+        # Calculate gust factor using sine wave for smooth transitions
+        gust_phase = (self.windGustTime % gust_period) / gust_period * 2 * math.pi
+        
+        # Create realistic gust pattern (quick rise, slower fall)
+        if gust_phase < math.pi:
+            # Building gust
+            gust_strength = math.sin(gust_phase)
+            self.windSpeedFactor = 1.0 + (max_gust_factor - 1.0) * gust_strength * 0.7
+        else:
+            # Lull after gust
+            lull_strength = -math.sin(gust_phase) * 0.5
+            self.windSpeedFactor = 1.0 + (min_lull_factor - 1.0) * lull_strength
+        
+        # Add some randomness to make it more realistic
+        import random
+        self.windSpeedFactor += random.uniform(-0.05, 0.05)
+        
+        # Gradual direction changes
+        target_shift = math.sin(self.windGustTime * 0.1) * max_dir_shift
+        shift_diff = target_shift - self.windDirShift
+        
+        # Limit rate of direction change
+        if abs(shift_diff) > dir_change_rate * dt:
+            self.windDirShift += math.copysign(dir_change_rate * dt, shift_diff)
+        else:
+            self.windDirShift = target_shift
+        
+        # Apply wind changes
+        self.boat.boat.wind.norm = self.baseWindSpeed * self.windSpeedFactor
+        self.boat.boat.wind.angle = Angle(1, self.baseWindDir + self.windDirShift)
+    
     def updateCycle(self, f):
         if not self.pause:
+            # Update wind variability if enabled
+            if self.windVar:
+                self.updateWindVariability(1/70)
+            
             # Update boat state
             self.boat.update(self.auto, self.forceShow)
             self.time += 1/fps * numCycle

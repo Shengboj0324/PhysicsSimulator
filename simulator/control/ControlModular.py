@@ -66,6 +66,24 @@ class ModularController:
         """Set a custom pathfinding controller."""
         self.pathfinding_controller = controller
     
+    def plan(self, plantype, waypoints):
+        """
+        Initialize control algorithm based on plan type.
+        
+        This method maintains compatibility with the original Controller interface.
+        
+        Args:
+            plantype: Type of plan ('e' for endurance, 'p' for precision, 's' for station keeping)
+            waypoints: List of waypoints for the plan
+            
+        Returns:
+            The active course
+        """
+        self.course_type = plantype
+        self.waypoints = waypoints
+        self.calculate_next_leg()
+        return self.active_course
+    
     def calculate_next_leg(self):
         """
         Calculate path segments between waypoints using the pathfinding controller.

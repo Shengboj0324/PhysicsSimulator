@@ -159,6 +159,7 @@ def main():
     
     # Create and run display
     render = display(config['location'], boat)
+    
     render.runAnimation()
 
 
