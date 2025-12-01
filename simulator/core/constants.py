@@ -147,6 +147,69 @@ DEFAULT_SIMULATOR_CONFIG_FILE = "simulator_config.yaml"
 
 # Polar diagram file extension
 POLAR_FILE_EXTENSION = ".pol"
+DEFAULT_POLAR_FILE = "data/test.pol"
+
+# ============================================================================
+# WIND AND WEATHER CONSTANTS
+# ============================================================================
+
+# Default wind conditions
+DEFAULT_WIND_SPEED = 5.0  # m/s (~10 knots, light breeze)
+DEFAULT_WIND_DIRECTION = 270.0  # degrees (from West)
+
+# Wind speed ranges (Beaufort scale approximations)
+WIND_CALM_MAX = 0.5  # m/s
+WIND_LIGHT_AIR_MAX = 1.5  # m/s
+WIND_LIGHT_BREEZE_MAX = 3.3  # m/s
+WIND_GENTLE_BREEZE_MAX = 5.5  # m/s
+WIND_MODERATE_BREEZE_MAX = 7.9  # m/s
+WIND_FRESH_BREEZE_MAX = 10.7  # m/s
+WIND_STRONG_BREEZE_MAX = 13.8  # m/s
+WIND_NEAR_GALE_MAX = 17.1  # m/s
+WIND_GALE_MAX = 20.7  # m/s
+WIND_STRONG_GALE_MAX = 24.4  # m/s
+WIND_STORM_MAX = 28.4  # m/s
+WIND_VIOLENT_STORM_MAX = 32.6  # m/s
+
+# ============================================================================
+# BOAT CONFIGURATION CONSTANTS
+# ============================================================================
+
+# Boat mass limits
+MAX_BOAT_MASS = 10000.0  # kg (10 tons, very large sailboat)
+
+# Hull dimensions
+MIN_HULL_SIZE = 0.1  # meters
+MAX_HULL_SIZE = 100.0  # meters
+
+# Sail dimensions
+MIN_SAIL_AREA = 0.1  # m²
+MAX_SAIL_AREA = 1000.0  # m²
+
+# ============================================================================
+# NAVIGATION AND PATHFINDING CONSTANTS
+# ============================================================================
+
+# Waypoint distances
+MIN_WAYPOINT_DISTANCE = 0.1  # meters
+MAX_WAYPOINT_DISTANCE = 10000.0  # meters (10 km)
+
+# Path recalculation
+DEFAULT_RECALC_INTERVAL = 1.0  # seconds
+
+# Station keeping
+MIN_DRIFT_RADIUS = 1.0  # meters
+MAX_DRIFT_RADIUS = 100.0  # meters
+DEFAULT_BOX_HALF_SIZE = 10.0  # meters
+
+# ============================================================================
+# ANIMATION AND DISPLAY CONSTANTS
+# ============================================================================
+
+# Animation timing
+DEFAULT_ANIMATION_INTERVAL = 1  # milliseconds between frames
+MIN_FPS = 1
+MAX_FPS = 120
 
 # CSV file parameters
 CSV_DELIMITER = ","

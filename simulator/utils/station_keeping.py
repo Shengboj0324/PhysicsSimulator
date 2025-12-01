@@ -1,5 +1,73 @@
+"""
+Station Keeping Controller - Industrial Grade
+
+Manages station keeping behavior for competition.
+
+Enhanced with:
+- Type hints
+- Input validation
+- Error handling
+- Logging
+- Advanced algorithms
+"""
+
 import math
-from ..core.Variables import *
+from typing import List, Tuple, Optional, Dict, Any
+import sys
+
+# Fix imports - use absolute imports with fallback
+try:
+    from simulator.core.Variables import *
+except ImportError:
+    from ..core.Variables import *
+
+# Import validation and error handling
+try:
+    from simulator.core.validators import Validator
+    from simulator.core.exceptions import ControlError, ValidationError
+    from simulator.core.logger import logger
+    from simulator.core.constants import (
+        MIN_DRIFT_RADIUS, MAX_DRIFT_RADIUS,
+        DEFAULT_BOX_HALF_SIZE
+    )
+except ImportError:
+    try:
+        from ..core.validators import Validator
+        from ..core.exceptions import ControlError, ValidationError
+        from ..core.logger import logger
+        from ..core.constants import (
+            MIN_DRIFT_RADIUS, MAX_DRIFT_RADIUS,
+            DEFAULT_BOX_HALF_SIZE
+        )
+    except ImportError:
+        # Fallback for backward compatibility
+        class Validator:
+            @staticmethod
+            def validate_positive(value, name="value", allow_zero=False):
+                return float(value)
+
+        class ControlError(Exception):
+            pass
+        class ValidationError(Exception):
+            pass
+
+        class logger:
+            @staticmethod
+            def info(msg, **kwargs):
+                print(f"INFO: {msg}")
+            @staticmethod
+            def error(msg, **kwargs):
+                print(f"ERROR: {msg}")
+            @staticmethod
+            def warning(msg, **kwargs):
+                print(f"WARNING: {msg}")
+            @staticmethod
+            def debug(msg, **kwargs):
+                pass
+
+        MIN_DRIFT_RADIUS = 1.0
+        MAX_DRIFT_RADIUS = 100.0
+        DEFAULT_BOX_HALF_SIZE = 10.0
 
 class StationKeepingController:
     """

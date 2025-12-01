@@ -90,3 +90,17 @@ class AlgorithmError(ControlError):
     """Raised when control algorithm encounters an error"""
     pass
 
+
+class DisplayError(SimulatorError):
+    """Raised when display system encounters errors"""
+    pass
+
+
+class MapError(SimulatorError):
+    """Raised when map data loading or processing fails"""
+    pass
+
+
+class GRIBError(DataError):
+    """Raised when GRIB weather data is invalid or unavailable"""
+    pass

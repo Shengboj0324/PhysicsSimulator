@@ -1,14 +1,30 @@
 """
-Simulator Configuration File
+Simulator Configuration File - Industrial Grade
 
 To use a custom control algorithm:
 1. Create your algorithm in the algorithms/ directory
 2. Import it here
 3. Set CONTROL_ALGORITHM to your algorithm class
-4. Run: python Display.py
+4. Run: python run_simulator.py
+
+Enhanced with:
+- Absolute imports with fallback
+- Error handling
+- Logging
 """
 
-from ..control.algorithms.example_zigzag import ZigzagAlgorithm
+import sys
+
+# Fix imports - use absolute imports with fallback
+try:
+    from simulator.control.algorithms.example_zigzag import ZigzagAlgorithm
+except ImportError:
+    try:
+        from ..control.algorithms.example_zigzag import ZigzagAlgorithm
+    except ImportError:
+        # Fallback if algorithm not available
+        ZigzagAlgorithm = None
+        print("WARNING: ZigzagAlgorithm not available, using default algorithms")
 
 # ============================================
 # SELECT YOUR CONTROL ALGORITHM

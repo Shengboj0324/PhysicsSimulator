@@ -1,8 +1,55 @@
+"""
+Map Module - Industrial Grade
+
+Handles map data, region polygons, and GRIB weather data.
+
+Enhanced with:
+- Type hints
+- Error handling
+- Input validation
+- Logging
+"""
+
 import osmnx as ox
 import pygrib
 import requests
 from datetime import datetime, timezone
 import numpy as np
+from typing import List, Tuple, Optional
+import sys
+
+# Import validation and error handling
+try:
+    from simulator.core.validators import Validator
+    from simulator.core.exceptions import MapError, ValidationError
+    from simulator.core.logger import logger
+except ImportError:
+    try:
+        from ..core.validators import Validator
+        from ..core.exceptions import MapError, ValidationError
+        from ..core.logger import logger
+    except ImportError:
+        # Fallback for backward compatibility
+        class Validator:
+            @staticmethod
+            def validate_positive(value, name="value", allow_zero=False):
+                return float(value)
+
+        class MapError(Exception):
+            pass
+        class ValidationError(Exception):
+            pass
+
+        class logger:
+            @staticmethod
+            def info(msg, **kwargs):
+                print(f"INFO: {msg}")
+            @staticmethod
+            def error(msg, **kwargs):
+                print(f"ERROR: {msg}")
+            @staticmethod
+            def warning(msg, **kwargs):
+                print(f"WARNING: {msg}")
 def coord_lister(geom):
     coords = list(geom.exterior.coords)
     return coords
