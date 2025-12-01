@@ -301,38 +301,12 @@ class Angle(Variable):
             return Angle(self.type, self.norm(self).value * self.norm(other).nType(self.type))
 
 def meter2degreeY(displacement: float) -> float:
-    """
-    Convert meters to degrees of latitude
-
-    Args:
-        displacement: Displacement in meters
-
-    Returns:
-        Displacement in degrees of latitude
-
-    Raises:
-        ValidationError: If displacement is invalid
-    """
     if math.isnan(displacement) or math.isinf(displacement):
         raise ValidationError(f"Invalid displacement: {displacement}")
 
     return Validator.safe_divide(displacement, METERS_PER_DEGREE_LAT, 0.0)
 
-
 def meter2degreeX(displacement: float, latitude: float) -> float:
-    """
-    Convert meters to degrees of longitude at given latitude
-
-    Args:
-        displacement: Displacement in meters
-        latitude: Reference latitude in degrees
-
-    Returns:
-        Displacement in degrees of longitude
-
-    Raises:
-        ValidationError: If inputs are invalid
-    """
     if math.isnan(displacement) or math.isinf(displacement):
         raise ValidationError(f"Invalid displacement: {displacement}")
 
